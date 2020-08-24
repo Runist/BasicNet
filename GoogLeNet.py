@@ -253,6 +253,11 @@ def model_train(model, x_train, x_val, epochs, train_step, val_step, weights_pat
         test_loss.reset_states()        
         test_accuracy.reset_states()
 
+        train_losses = []
+        train_acc = []
+        val_losses = []
+        val_acc = []
+
         # 计算训练集集
         process_bar = tqdm(range(train_step), ncols=100, desc="Epoch {}".format(epoch), unit="step")
         for _ in process_bar:
@@ -271,6 +276,14 @@ def model_train(model, x_train, x_val, epochs, train_step, val_step, weights_pat
 
             train_loss(loss)
             train_accuracy(labels, output)
+            train_losses.append(train_loss.result())
+            train_acc.append(train_accuracy.result())
+
+            process_bar.set_postfix({'loss': '{:.5f}'.format(train_loss.result()),
+                                     'acc': '{:.5f}'.format(train_accuracy.result() * 100)})
+
+        # 输出平均后的训练结果
+        print("\rtrain_loss:{:.4f} train_accuracy:{:.4f}".format(np.mean(train_losses), np.mean(train_acc)))
 
         # 计算验证集
         process_bar = tqdm(range(val_step), ncols=100, desc="Epoch {}".format(epoch), unit="step")
@@ -278,14 +291,22 @@ def model_train(model, x_train, x_val, epochs, train_step, val_step, weights_pat
             images, labels = next(val_datasets)
             # 验证集不需要参与到训练中，因此不需要计算梯度
             _, _, output = model(images, training=False)
-            t_loss = loss_object(labels, output)
+            loss = loss_object(labels, output)
 
-            test_loss(t_loss)
+            test_loss(loss)
             test_accuracy(labels, output)
+            val_losses.append(test_loss.result())
+            val_acc.append(test_accuracy.result())
+
+            process_bar.set_postfix({'loss': '{:.5f}'.format(test_loss.result()),
+                                     'acc': '{:.5f}'.format(test_accuracy.result() * 100)})
+
+        # 输出平均后的验证结果
+        print("\rvalidation_loss:{:.4f} validation_accuracy:{:.4f}\n".format(np.mean(val_losses), np.mean(val_acc)))
 
         if test_loss.result() < best_test_loss:
             best_test_loss = test_loss.result()
-            model.save_weights(weights_path, save_format='tf')
+            model.save_weights(weights_path)
 
 
 def model_predict(model, weights_path, height, width):
@@ -298,7 +319,7 @@ def model_predict(model, weights_path, height, width):
     :return: None
     """
     class_indict = ['daisy', 'dandelion', 'rose', 'sunflower', 'tulips']
-    img_path = './dataset/tulips.jpg'
+    img_path = './dataset/daisy.jpg'
 
     # 值得一提的是，这里开启图片如果用其他方式，需要考虑读入图片的通道数，在制作训练集时采用的是RGB，而opencv采用的则是BGR
     image = tf.io.read_file(img_path)
@@ -311,8 +332,11 @@ def model_predict(model, weights_path, height, width):
     image = (np.expand_dims(image, 0))
 
     model.load_weights(weights_path)
+
+    # 这里不需要辅助分类器的值
+    _, _, output = model.predict(image)
     # 预测的结果是包含batch这个维度，所以要把这个batch这维度给压缩掉
-    result = np.squeeze(model.predict(image))
+    result = np.squeeze(output)
     predict_class = int(np.argmax(result))
     print("预测类别：{}, 预测可能性{:.03f}".format(class_indict[predict_class], result[predict_class]*100))
 
@@ -328,9 +352,9 @@ def main():
 
     batch_size = 32
     num_classes = 5
-    epochs = 20
+    epochs = 30
     lr = 0.0003
-    is_train = True
+    is_train = False
 
     # 选择编号为0的GPU
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -351,7 +375,10 @@ def main():
     train_dataset = make_datasets(train_image, train_label, batch_size, mode='train')
     val_dataset = make_datasets(val_image, val_label, batch_size, mode='validation')
 
-    model = GoogLeNet(height, width, num_classes, channel, aux_logits=is_train)
+    model = GoogLeNet(height, width, num_classes, channel, aux_logits=True)
+    # 可以选择载入上次的权重，继续训练
+    # model.load_weights(weights_path)
+
     optimizer = optimizers.Adam(learning_rate=lr)
 
     if is_train:

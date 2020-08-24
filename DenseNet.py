@@ -1,23 +1,14 @@
 # -*- coding: utf-8 -*-
-# @File : exam4_vgg.py
+# @File : DenseNet.py
 # @Author: Runist
-# @Time : 2020/3/2 12:31
+# @Time : 2020/8/24 9:17
 # @Software: PyCharm
-# @Brief: VGG网络实现
-
+# @Brief: 用keras实现DenseNet
 
 import tensorflow as tf
-from tensorflow.keras import layers, losses, optimizers, models, callbacks
 import os
+from tensorflow.keras import layers, losses, optimizers, models, callbacks, applications
 import numpy as np
-
-
-cfgs = {
-    'vgg11': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
-    'vgg13': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
-    'vgg16': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
-    'vgg19': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M']
-}
 
 
 def read_data(path):
@@ -87,45 +78,72 @@ def parse(img_path, label, width=224, height=224, class_num=5):
     return image, label
 
 
-def features(cfg):
+def conv_block(x, growth_rate):
     """
-    由于VGG有不同层数的配置，根据传入的不同种结构的字典，构建vgg网络
-    :param cfg: 根据传入的列表数据构建vgg卷积层
-    :return: Sequential 对象
+    DenseNet的conv块，议论文的描述是BN-ReLU-Conv
+    :param x: 输入变量
+    :param growth_rate: 增长率
+    :return: x
     """
+    x1 = layers.BatchNormalization()(x)
+    x1 = layers.Activation('relu')(x1)
+    x1 = layers.Conv2D(4 * growth_rate, kernel_size=1, use_bias=False)(x1)
+    x1 = layers.BatchNormalization()(x1)
+    x1 = layers.Activation('relu')(x1)
+    x1 = layers.Conv2D(growth_rate, padding='same', kernel_size=3, use_bias=False)(x1)
+    x = layers.Concatenate()([x, x1])
 
-    feature_layers = []
-    for v in cfg:
-        if v == 'M':
-            feature_layers.append(layers.MaxPool2D(pool_size=2, strides=2))
-        else:
-            conv2d = layers.Conv2D(v, kernel_size=3, padding='SAME', activation='relu')
-            feature_layers.append(conv2d)
-
-    return models.Sequential(feature_layers, name='feature')
+    return x
 
 
-def VGG(feature, height, width, channel, class_num=5):
+def transition_block(x, reduction):
     """
-    建立VGG网络，由于VGG后面的全连接层都是一样的，所以封装成函数
-    :param feature: 前十几层不同，放在一个函数中搭建
-    :param width: 宽度
-    :param height: 高度
-    :param channel: 图片通道数
-    :param class_num: 分类数量
-    :return: model
+    过渡层，每个Dense Block直接降采样的部分
+    :param x: 输入
+    :param reduction: 维度降低的部分
+    :return: x
     """
-    # Tensor的通道排序是NHWC
-    input_image = layers.Input(shape=(height, width, channel), dtype="float32")
-    x = feature(input_image)
-    x = layers.Flatten()(x)
-    x = layers.Dropout(rate=0.5)(x)
-    x = layers.Dense(2048, activation='relu')(x)
-    x = layers.Dropout(rate=0.5)(x)
-    x = layers.Dense(2048, activation='relu')(x)
-    x = layers.Dense(class_num)(x)
-    output = layers.Softmax()(x)
-    model = models.Model(inputs=input_image, outputs=output)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+    # 降维
+    x = layers.Conv2D(int(x.shape[-1] * reduction), kernel_size=1, use_bias=False)(x)
+    x = layers.AveragePooling2D(2, strides=2)(x)
+
+    return x
+
+
+def dense_block(x, blocks):
+    for i in range(blocks):
+        x = conv_block(x, 32)
+    return x
+
+
+def DenseNet(height, width, channel, blocks, class_num=5):
+    input_image = layers.Input((height, width, channel), dtype="float32")
+
+    x = layers.ZeroPadding2D(padding=((3, 3), (3, 3)))(input_image)
+    x = layers.Conv2D(64, 7, strides=2, use_bias=False)(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+
+    x = layers.ZeroPadding2D(padding=((1, 1), (1, 1)))(x)
+    x = layers.MaxPooling2D(3, strides=2)(x)
+
+    x = dense_block(x, blocks[0])
+    x = transition_block(x, 0.5)
+    x = dense_block(x, blocks[1])
+    x = transition_block(x, 0.5)
+    x = dense_block(x, blocks[2])
+    x = transition_block(x, 0.5)
+    x = dense_block(x, blocks[3])
+
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dense(class_num, activation='softmax')(x)
+
+    model = models.Model(input_image, x)
     model.summary()
 
     return model
@@ -196,7 +214,7 @@ def main():
     dataset_path = './dataset/'
     train_dir = os.path.join(dataset_path, 'train')
     val_dir = os.path.join(dataset_path, 'validation')
-    weights_path = "./logs/weights/VGG.h5"
+    weights_path = "./logs/weights/DenseNet.h5"
     width = height = 224
     channel = 3
 
@@ -204,7 +222,7 @@ def main():
     num_classes = 5
     epochs = 20
     lr = 0.0003
-    is_train = False
+    is_train = True
 
     # 选择编号为0的GPU，如果不使用gpu则置为-1
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -229,8 +247,8 @@ def main():
     val_dataset = make_datasets(val_image, val_label, batch_size, mode='validation')
 
     # 模型搭建
-    vgg13_feature = features(cfgs['vgg13'])
-    model = VGG(vgg13_feature, height, width, channel, num_classes)
+    model = DenseNet(height, width, channel, [6, 12, 24, 16], num_classes)
+    model.summary()
 
     model.compile(loss=losses.CategoricalCrossentropy(from_logits=False),
                   optimizer=optimizers.Adam(learning_rate=lr),
@@ -245,3 +263,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
