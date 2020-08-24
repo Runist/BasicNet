@@ -78,19 +78,26 @@ def parse(img_path, label, width=224, height=224, class_num=5):
     return image, label
 
 
-def conv_block(x, growth_rate):
+def conv_block(x, growth_rate, dropout_rate=None):
     """
-    DenseNet的conv块，议论文的描述是BN-ReLU-Conv
+    DenseNet的conv块，以论文的描述是BN-ReLU-Conv
     :param x: 输入变量
     :param growth_rate: 增长率
+    :param dropout_rate: dropout的比率
     :return: x
     """
     x1 = layers.BatchNormalization()(x)
     x1 = layers.Activation('relu')(x1)
     x1 = layers.Conv2D(4 * growth_rate, kernel_size=1, use_bias=False)(x1)
+    if dropout_rate:
+        x1 = layers.Dropout(dropout_rate)(x1)
+
     x1 = layers.BatchNormalization()(x1)
     x1 = layers.Activation('relu')(x1)
     x1 = layers.Conv2D(growth_rate, padding='same', kernel_size=3, use_bias=False)(x1)
+    if dropout_rate:
+        x1 = layers.Dropout(dropout_rate)(x1)
+
     x = layers.Concatenate()([x, x1])
 
     return x
@@ -112,13 +119,30 @@ def transition_block(x, reduction):
     return x
 
 
-def dense_block(x, blocks):
-    for i in range(blocks):
-        x = conv_block(x, 32)
+def dense_block(x, blocks, dropout_rate=None):
+    """
+    一个dense block由多个卷积块组成
+    :param x: 输入
+    :param blocks: 每个dense block卷积多少次
+    :param dropout_rate: dropout的比率
+    :return: x
+    """
+    for _ in range(blocks):
+        x = conv_block(x, 32, dropout_rate)
     return x
 
 
-def DenseNet(height, width, channel, blocks, class_num=5):
+def DenseNet(height, width, channel, blocks, dropout_rate=None, class_num=5):
+    """
+    建立DenseNet网络，需要调节dense block的数量、一个dense block中有多少个conv、以及针对小数据集的dropout rate
+    :param height: 图像的高
+    :param width: 图像的宽
+    :param channel: 图像的通道数
+    :param blocks: 卷积块的数量
+    :param dropout_rate: dropout的比率
+    :param class_num: 分类的数量
+    :return: model
+    """
     input_image = layers.Input((height, width, channel), dtype="float32")
 
     x = layers.ZeroPadding2D(padding=((3, 3), (3, 3)))(input_image)
@@ -129,13 +153,10 @@ def DenseNet(height, width, channel, blocks, class_num=5):
     x = layers.ZeroPadding2D(padding=((1, 1), (1, 1)))(x)
     x = layers.MaxPooling2D(3, strides=2)(x)
 
-    x = dense_block(x, blocks[0])
-    x = transition_block(x, 0.5)
-    x = dense_block(x, blocks[1])
-    x = transition_block(x, 0.5)
-    x = dense_block(x, blocks[2])
-    x = transition_block(x, 0.5)
-    x = dense_block(x, blocks[3])
+    for block in blocks[:-1]:
+        x = dense_block(x, block, dropout_rate)
+        x = transition_block(x, 0.5)
+    x = dense_block(x, blocks[-1])
 
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
@@ -222,6 +243,7 @@ def main():
     num_classes = 5
     epochs = 20
     lr = 0.0003
+    dropout_rate = 0.2
     is_train = True
 
     # 选择编号为0的GPU，如果不使用gpu则置为-1
@@ -247,8 +269,7 @@ def main():
     val_dataset = make_datasets(val_image, val_label, batch_size, mode='validation')
 
     # 模型搭建
-    model = DenseNet(height, width, channel, [6, 12, 24, 16], num_classes)
-    model.summary()
+    model = DenseNet(height, width, channel, [6, 12, 24, 16], dropout_rate, num_classes)
 
     model.compile(loss=losses.CategoricalCrossentropy(from_logits=False),
                   optimizer=optimizers.Adam(learning_rate=lr),

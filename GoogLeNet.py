@@ -163,7 +163,16 @@ class InceptionAux(layers.Layer):
         return x
 
 
-def GoogLeNet(height, width, class_num, channel, aux_logits=False):
+def GoogLeNet(height, width, channel, class_num, aux_logits=False):
+    """
+    建立DenseNet网络，只需要调节是否使用辅助分类器
+    :param height: 图像的高
+    :param width: 图像的宽
+    :param channel: 图像的通道数
+    :param class_num: 分类的数量
+    :param aux_logits: 是否使用辅助分类器
+    :return:
+    """
     input_image = layers.Input(shape=(height, width, channel), dtype="float32")
     # (None, 224, 224, 3)
     x = layers.Conv2D(64, kernel_size=7, strides=2, padding='SAME', activation='relu', name='conv2d_1')(input_image)
