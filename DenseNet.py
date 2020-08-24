@@ -243,8 +243,11 @@ def main():
     num_classes = 5
     epochs = 20
     lr = 0.0003
-    dropout_rate = 0.2
     is_train = True
+    if is_train:
+        dropout_rate = 0.2
+    else:
+        dropout_rate = None
 
     # 选择编号为0的GPU，如果不使用gpu则置为-1
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -254,9 +257,6 @@ def main():
     if gpus:
         for gpu in gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
-
-    # 在数据准备的时候，有些代码会减去[123.68, 116.78, 103.94]的均值，也就是ImageNet数据集的均值
-    # 如果是迁移学习，就需要减去这个均值，如果是从头开始训练就不需要减去均值
 
     # 数据读取
     train_image, train_label = read_data(train_dir)
