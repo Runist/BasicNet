@@ -119,28 +119,31 @@ def transition_block(x, reduction):
     return x
 
 
-def dense_block(x, blocks, dropout_rate=None):
+def dense_block(x, blocks, growth_rate, dropout_rate=None):
     """
     一个dense block由多个卷积块组成
     :param x: 输入
     :param blocks: 每个dense block卷积多少次
     :param dropout_rate: dropout的比率
+    :param growth_rate: 每个特征层的增长率
     :return: x
     """
     for _ in range(blocks):
-        x = conv_block(x, 32, dropout_rate)
+        x = conv_block(x, growth_rate, dropout_rate)
     return x
 
 
-def DenseNet(height, width, channel, blocks, dropout_rate=None, class_num=5):
+def DenseNet(height, width, channel, blocks, class_num, growth_rate=32, reduction=0.5, dropout_rate=None):
     """
-    建立DenseNet网络，需要调节dense block的数量、一个dense block中有多少个conv、以及针对小数据集的dropout rate
+    建立DenseNet网络，需要调节dense block的数量、一个dense block中有多少个conv、growth_rate、reduction、dropout rate
     :param height: 图像的高
     :param width: 图像的宽
     :param channel: 图像的通道数
     :param blocks: 卷积块的数量
-    :param dropout_rate: dropout的比率
     :param class_num: 分类的数量
+    :param growth_rate: 每个特征层的增长率
+    :param reduction: 过渡层减少层数的比例
+    :param dropout_rate: dropout的比率
     :return: model
     """
     input_image = layers.Input((height, width, channel), dtype="float32")
@@ -154,9 +157,9 @@ def DenseNet(height, width, channel, blocks, dropout_rate=None, class_num=5):
     x = layers.MaxPooling2D(3, strides=2)(x)
 
     for block in blocks[:-1]:
-        x = dense_block(x, block, dropout_rate)
-        x = transition_block(x, 0.5)
-    x = dense_block(x, blocks[-1])
+        x = dense_block(x, block, growth_rate=growth_rate, dropout_rate=dropout_rate)
+        x = transition_block(x, reduction=reduction)
+    x = dense_block(x, blocks[-1], growth_rate=growth_rate, dropout_rate=dropout_rate)
 
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
@@ -212,7 +215,7 @@ def model_predict(model, weights_path, height, width):
     :return: None
     """
     class_indict = ['daisy', 'dandelion', 'rose', 'sunflower', 'tulips']
-    img_path = './dataset/sunflower.jpg'
+    img_path = './dataset/tulips.jpg'
 
     # 值得一提的是，这里开启图片如果用其他方式，需要考虑读入图片的通道数，在制作训练集时采用的是RGB，而opencv采用的则是BGR
     image = tf.io.read_file(img_path)
@@ -243,7 +246,9 @@ def main():
     num_classes = 5
     epochs = 20
     lr = 0.0003
-    is_train = True
+    growth_rate = 12
+    reduction = 0.5
+    is_train = False
     if is_train:
         dropout_rate = 0.2
     else:
@@ -269,7 +274,10 @@ def main():
     val_dataset = make_datasets(val_image, val_label, batch_size, mode='validation')
 
     # 模型搭建
-    model = DenseNet(height, width, channel, [6, 12, 24, 16], dropout_rate, num_classes)
+    model = DenseNet(height, width, channel, [8, 16, 8], num_classes,
+                     growth_rate=growth_rate,
+                     reduction=reduction,
+                     dropout_rate=dropout_rate)
 
     model.compile(loss=losses.CategoricalCrossentropy(from_logits=False),
                   optimizer=optimizers.Adam(learning_rate=lr),
