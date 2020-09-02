@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# @File : exam5_GoogLeNet.py
+# @File : GoogLeNet.py
 # @Author: Runist
 # @Time : 2020/3/2 15:41
 # @Software: PyCharm
@@ -96,7 +96,7 @@ class Inception(layers.Layer):
         :param kwargs: 可变长度字典、方便传入层名称
         """
         super(Inception, self).__init__(**kwargs)
-        # 这里第一个1x1的卷积因为没有用SAME方式，所以尺寸会缩小
+        # 这里第一个1x1的卷积因为没有用SAME方式
         self.branch1 = layers.Conv2D(conv2d1x1, kernel_size=1, activation='relu')
 
         # 第二个是先用1x1的卷积核降维，然后再用'SAME'方法可以使得和branch1一样，
@@ -384,7 +384,7 @@ def main():
     train_dataset = make_datasets(train_image, train_label, batch_size, mode='train')
     val_dataset = make_datasets(val_image, val_label, batch_size, mode='validation')
 
-    model = GoogLeNet(height, width, num_classes, channel, aux_logits=True)
+    model = GoogLeNet(height, width, channel, num_classes, aux_logits=True)
     # 可以选择载入上次的权重，继续训练
     # model.load_weights(weights_path)
 

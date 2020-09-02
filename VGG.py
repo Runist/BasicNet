@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# @File : exam4_vgg.py
+# @File : VGG.py
 # @Author: Runist
 # @Time : 2020/3/2 12:31
 # @Software: PyCharm

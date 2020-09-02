@@ -173,6 +173,34 @@ def DenseNet(height, width, channel, blocks, class_num, growth_rate=32, reductio
     return model
 
 
+def DenseNet121(height, width, channel, num_classes, growth_rate, reduction, dropout_rate):
+    return DenseNet(height, width, channel, [6, 12, 24, 16], num_classes,
+                    growth_rate=growth_rate,
+                    reduction=reduction,
+                    dropout_rate=dropout_rate)
+
+
+def DenseNet169(height, width, channel, num_classes, growth_rate, reduction, dropout_rate):
+    return DenseNet(height, width, channel, [6, 12, 32, 32], num_classes,
+                    growth_rate=growth_rate,
+                    reduction=reduction,
+                    dropout_rate=dropout_rate)
+
+
+def DenseNet201(height, width, channel, num_classes, growth_rate, reduction, dropout_rate):
+    return DenseNet(height, width, channel, [6, 12, 48, 32], num_classes,
+                    growth_rate=growth_rate,
+                    reduction=reduction,
+                    dropout_rate=dropout_rate)
+
+
+def DenseNet264(height, width, channel, num_classes, growth_rate, reduction, dropout_rate):
+    return DenseNet(height, width, channel, [6, 12, 64, 48], num_classes,
+                    growth_rate=growth_rate,
+                    reduction=reduction,
+                    dropout_rate=dropout_rate)
+
+
 def model_train(model, x_train, x_val, epochs, train_step, val_step, weights_path):
     """
     模型训练
@@ -215,7 +243,7 @@ def model_predict(model, weights_path, height, width):
     :return: None
     """
     class_indict = ['daisy', 'dandelion', 'rose', 'sunflower', 'tulips']
-    img_path = './dataset/tulips.jpg'
+    img_path = './dataset/sunflower.jpg'
 
     # 值得一提的是，这里开启图片如果用其他方式，需要考虑读入图片的通道数，在制作训练集时采用的是RGB，而opencv采用的则是BGR
     image = tf.io.read_file(img_path)
@@ -274,10 +302,10 @@ def main():
     val_dataset = make_datasets(val_image, val_label, batch_size, mode='validation')
 
     # 模型搭建
-    model = DenseNet(height, width, channel, [8, 16, 8], num_classes,
-                     growth_rate=growth_rate,
-                     reduction=reduction,
-                     dropout_rate=dropout_rate)
+    model = DenseNet121(height, width, channel, num_classes,
+                        growth_rate=growth_rate,
+                        reduction=reduction,
+                        dropout_rate=dropout_rate)
 
     model.compile(loss=losses.CategoricalCrossentropy(from_logits=False),
                   optimizer=optimizers.Adam(learning_rate=lr),
