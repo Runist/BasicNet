@@ -267,7 +267,7 @@ def model_train(model, x_train, x_val, epochs, train_step, val_step, weights_pat
         val_losses = []
         val_acc = []
 
-        # 计算训练集集
+        # 计算训练集
         process_bar = tqdm(range(train_step), ncols=100, desc="Epoch {}".format(epoch), unit="step")
         for _ in process_bar:
             images, labels = next(train_datasets)

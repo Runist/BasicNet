@@ -381,6 +381,7 @@ def main():
 
     # 定义模型
     model = ResNet18(width, height, num_classes)
+    model.load_weights("./weights/pretrain.h5", skip_mismatch=True, by_name=True)
 
     # 输出层如果已经经过softmax激活就用from_logits置为False，如果没有处理 就置为True
     # 如果没有处理，模型会更加稳定
