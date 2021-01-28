@@ -134,7 +134,7 @@ def model_train(model, x_train, x_val, epochs, train_step, val_step, weights_pat
                                      save_best_only=True,
                                      save_weights_only=True,
                                      monitor='val_loss'),
-           callbacks.EarlyStopping(patience=5, min_delta=1e-3)]
+           callbacks.EarlyStopping(patience=10, min_delta=1e-3)]
 
     # 重点：fit 和 fit_generator的区别
     # 之前fit方法是使用整个训练集可以放入内存当中
@@ -184,7 +184,7 @@ def main():
     dataset_path = './dataset/'
     train_dir = os.path.join(dataset_path, 'train')
     val_dir = os.path.join(dataset_path, 'validation')
-    weights_path = "./logs/weights/AlexNet.h5"
+    weights_path = "./model_weights/AlexNet.h5"
 
     width = height = 224
     channel = 3

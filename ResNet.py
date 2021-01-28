@@ -79,40 +79,43 @@ def parse(img_path, label, width=224, height=224, class_num=5):
 
 
 class BasicBlock(layers.Layer):
-    # 用来控制不同层次的残差网络的通道倍增数
-    expansion = 1
 
-    def __init__(self, out_channel, strides=1, downsample=None, **kwargs):
+    def __init__(self, out_channel, strides=1, downsample=False, **kwargs):
         """
 
-        :param out_channel:
-        :param strides:
-        :param downsample: 对应下采样的卷积处理方法
+        :param out_channel: 输出通道
+        :param strides: 卷积步长
+        :param downsample: 是否进行下采样
         :param kwargs: 变长层名字
         """
         super(BasicBlock, self).__init__(**kwargs)
-        self.conv1 = layers.Conv2D(out_channel, kernel_size=3, strides=strides, padding="SAME", use_bias=False)
-        # epsilon是防止分母为0的情况
-        self.bn1 = layers.BatchNormalization(momentum=0.9, epsilon=1e-5)
-
-        self.conv2 = layers.Conv2D(out_channel, kernel_size=3, strides=1, padding="SAME", use_bias=False)
-        self.bn2 = layers.BatchNormalization(momentum=0.9, epsilon=1e-5)
 
         self.downsample = downsample
+        if downsample:
+            self.downsample_conv = layers.Conv2D(out_channel, kernel_size=1, strides=strides, use_bias=False)
+            self.downsample_bn = layers.BatchNormalization()
+
+        self.conv1 = layers.Conv2D(out_channel, kernel_size=3, strides=strides, padding="SAME", use_bias=False)
+        self.bn1 = layers.BatchNormalization()
+
+        self.conv2 = layers.Conv2D(out_channel, kernel_size=3, strides=1, padding="SAME", use_bias=False)
+        self.bn2 = layers.BatchNormalization()
+
         self.relu = layers.ReLU()
         self.add = layers.Add()
 
     def call(self, inputs, training=False):
         """
-
-        :param inputs:
+        对象调用函数
+        :param inputs: block输入
         :param training: 用在训练过程和预测过程中，控制其生效与否
         :return:
         """
-        # identity代表的是残差网络基本单元的输入，最后要和输出相加
         identity = inputs
-        if self.downsample is not None:
-            identity = self.downsample(inputs)
+
+        if self.downsample:
+            identity = self.downsample_conv(identity)
+            identity = self.downsample_bn(identity)
 
         x = self.conv1(inputs)
         x = self.bn1(x, training=training)
@@ -127,49 +130,47 @@ class BasicBlock(layers.Layer):
         return x
 
 
-class Bottleneck(layers.Layer):
-    # 用来控制不同层次的残差网络的通道倍增数
-    expansion = 4
+class BottleneckBlock(layers.Layer):
 
-    def __init__(self, out_channel, strides=1, downsample=None, **kwargs):
+    def __init__(self, out_channel, strides=1, downsample=False, **kwargs):
         """
 
-        :param out_channel:
-        :param strides:
-        :param downsample: 对应下采样的卷积处理方法
+        :param out_channel: 输出通道
+        :param strides: 卷积步长
+        :param downsample: 是否进行下采样
         :param kwargs: 变长层名字
         """
-        super(Bottleneck, self).__init__(**kwargs)
-        self.conv1 = layers.Conv2D(out_channel,
-                                   kernel_size=1, strides=1, padding="SAME", use_bias=False, name='conv1')
-        # epsilon是防止分母为0的情况
-        self.bn1 = layers.BatchNormalization(momentum=0.9, epsilon=1e-5, name='conv1/BatchNorm')
-        # -------------------------------------------------
-        self.conv2 = layers.Conv2D(out_channel,
-                                   kernel_size=3, strides=strides, padding="SAME", use_bias=False, name='conv2')
-        self.bn2 = layers.BatchNormalization(momentum=0.9, epsilon=1e-5, name='conv2/BatchNorm')
-        # -------------------------------------------------
-        self.conv3 = layers.Conv2D(out_channel*self.expansion,
-                                   kernel_size=1, strides=1, padding="SAME", use_bias=False, name='conv3')
-        self.bn3 = layers.BatchNormalization(momentum=0.9, epsilon=1e-5, name='conv3/BatchNorm')
-        # -------------------------------------------------
+        super(BottleneckBlock, self).__init__(**kwargs)
+
         self.downsample = downsample
+
+        self.shortcut_conv = layers.Conv2D(out_channel*4, kernel_size=1, strides=strides, use_bias=False)
+        self.shortcut_bn = layers.BatchNormalization()
+
+        self.conv1 = layers.Conv2D(out_channel, kernel_size=1, strides=strides, padding="SAME", use_bias=False)
+        self.bn1 = layers.BatchNormalization()
+
+        self.conv2 = layers.Conv2D(out_channel, kernel_size=3, strides=1, padding="SAME", use_bias=False)
+        self.bn2 = layers.BatchNormalization()
+
+        self.conv3 = layers.Conv2D(out_channel*4, kernel_size=1, strides=1, padding="SAME", use_bias=False)
+        self.bn3 = layers.BatchNormalization()
+
         self.relu = layers.ReLU()
         self.add = layers.Add()
 
     def call(self, inputs, training=False):
         """
-
-        :param inputs:
+        对象调用函数
+        :param inputs: block输入
         :param training: 用在训练过程和预测过程中，控制其生效与否
         :return:
         """
-        # identity代表的是残差网络基本单元的输入，最后要和输出相加
         identity = inputs
-
-        # 如果有downsample就代表使用论文中带有维度变换的shortcut
-        if self.downsample is not None:
-            identity = self.downsample(inputs)
+        if self.downsample:
+            x = self.shortcut_conv(inputs)
+            x = self.shortcut_bn(x)
+            identity = self.relu(x)
 
         x = self.conv1(inputs)
         x = self.bn1(x, training=training)
@@ -188,100 +189,72 @@ class Bottleneck(layers.Layer):
         return x
 
 
-def make_layer(block, in_channel, first_channel, block_list, name, strides=1):
+def resblock_body(res_block, filters, num_blocks, strides, name):
     """
-    构建一个大的layer，里面包含几个残差单元
-    :param block: 使用的 哪种残差单元 对应的类方法
-    :param in_channel: 上一层的通道数
-    :param first_channel: 对应这一块残差单元的第一层通道数
-    :param block_list: 对应 有几个残差单元
-    :param name: 这个 大块的类残差单元的名字
-    :param strides: 卷积的步长
+    ResNet中残差单元
+    :param res_block: 残差块类型
+    :param filters: 卷积核个数
+    :param num_blocks: 残差块重复的次数
+    :param strides: 步长
+    :param name: 该残差单元的名字
     :return:
     """
-    downsample = None
+    if res_block == BasicBlock:
+        layer_list = [res_block(filters, downsample=strides != 1, strides=strides)]
+    else:
+        layer_list = [res_block(filters, downsample=True, strides=strides)]
 
-    # 一般18、34层第一个残差块的shortcut是没有虚线结构的，所以不需要传入downsample方法
-    # 所以步长就为2的时候就可以进入if语句
-    # 而50层以上的第一个残差块也是要降采样，50层以上和18、34有所不同的是，他们的残差块输出层通道数是输入层的4倍
-    # 当然可以是其他倍数、只不过这个是经过作者测试比较稳定，而浅层的输入输出都是一样的 的通道数
-    # 所以利用 上一层的通道数 是否等于 残差块第一层 * 类中倍增系数 就可以让 更深层次的情况包括进去
-    if strides != 1 or in_channel != first_channel * block.expansion:
-        # 在这里定义block内的downsample方法
-        # 然后作为Block类 的参数传入
-        downsample = models.Sequential([
-            # 无论是18、34层的还是更深层次的，其输出的通道数都是以first_channel*block.expansion为结果
-            # 如果 是浅层的结构就是1*first_channel, 若是深层就是4*first_channel
-            layers.Conv2D(first_channel*block.expansion, kernel_size=1, strides=strides, use_bias=False, name="conv1"),
-            layers.BatchNormalization(momentum=0.9, epsilon=1.001e-5, name="BatchNorm")
-        ], name="shortcut")
-
-    # 无论是浅层还是深层，只有第一层是虚线残差结构，后面的层次都是实线残差结构
-    layer_list = [block(first_channel, downsample=downsample, strides=strides, name="unit_1")]
-
-    for i in range(1, block_list):
-        layer_list.append(block(first_channel, name="unit_{}".format(i+1)))
+    for _ in range(num_blocks - 1):
+        layer_list.append(res_block(filters))
 
     return models.Sequential(layer_list, name=name)
 
 
-def ResNet(block, blocks_list, height, width, num_class, include_top=False):
+def ResNet(height, width, num_class, res_block, blocks_list):
     """
-    构建残差网络的框架，我们把残差网络的基本单元称为残差单元，
-    残差单元内部 又由标准的 残差结构组成：包括2层或3层卷积层、批归一化、激活函数
-    而残差网络都是由conv1 + conv2_x + conv3_x + conv4_x + conv5_x构成
-    不同的层数的残差网络，对应的conv内的结构也有所不同（18、34是用BasicBlock残差单元,
-    50以上的用的是Bottleneck残差单元）。
-    :param block: 使用的残差单元定义
-    :param blocks_list: 每个conv中对应残差单元的个数 列表
-    :param height:
-    :param width:
-    :param num_class:
-    :param include_top: 是否添加全连接层，并激活顶层函数
-    :return: model
+    ResNet网络结构，通过传入不同的残差块和重复的次数进行不同层数的ResNet构建
+    :param height: 网络输入宽度
+    :param width: 网络输入高度
+    :param num_class: 分类数量
+    :param res_block: 残差块单元
+    :param blocks_list: 每个残差单元重复的次数列表
+    :return:
     """
-    # input_shape(None, 224, 224, 3)
-    input_image = layers.Input(shape=(height, width, 3), dtype='float32')
-    # 每个残差网络第一层都是7x7的卷积+3x3池化
+    input_image = layers.Input(shape=(height, width, 3))
     x = layers.Conv2D(filters=64, kernel_size=7, strides=2, padding='SAME', name='conv1', use_bias=False)(input_image)
-    x = layers.BatchNormalization(momentum=0.9, epsilon=1e-5, name="conv1/BatchNorm")(x)        # (112, 112, 64)
+    x = layers.BatchNormalization(name="conv1/BatchNorm")(x)
     x = layers.ReLU()(x)
-    x = layers.MaxPool2D(pool_size=3, strides=2, padding='SAME')(x)     # (56, 56, 64)
+    x = layers.MaxPool2D(pool_size=3, strides=2, padding='SAME', name="max_pool")(x)
 
-    x = make_layer(block, x.shape[-1], 64, blocks_list[0], name="conv2_x")(x)     # (56, 56, 64)
-    x = make_layer(block, x.shape[-1], 128, blocks_list[1], strides=2, name="conv3_x")(x)       # (28, 28, 128)
-    x = make_layer(block, x.shape[-1], 256, blocks_list[2], strides=2, name="conv4_x")(x)       # (14, 14, 256)
-    x = make_layer(block, x.shape[-1], 512, blocks_list[3], strides=2, name="conv5_x")(x)       # (7, 7, 256)
+    x = resblock_body(res_block, 64, blocks_list[0], strides=1, name='conv2_x')(x)
+    x = resblock_body(res_block, 128, blocks_list[1], strides=2, name='conv3_x')(x)
+    x = resblock_body(res_block, 256, blocks_list[2], strides=2, name='conv4_x')(x)
+    x = resblock_body(res_block, 512, blocks_list[3], strides=2, name='conv5_x')(x)
 
-    if include_top:
-        # 使用了全局平均池化，无论输入矩阵高和宽多少，都换变成1x1且 平铺处理
-        x = layers.GlobalAvgPool2D()(x)  # pool + flatten
-        x = layers.Dense(num_class, name="logits")(x)
-        predict = layers.Softmax()(x)
-    else:
-        # 如果不展平处理激活的话，就可以在后面使用迁移学习做更多的操作
-        predict = x
+    x = layers.GlobalAvgPool2D(name='avg_pool')(x)
+    x = layers.Dense(num_class, name="logits")(x)
+    outputs = layers.Softmax()(x)
 
-    model = models.Model(inputs=input_image, outputs=predict)
+    model = models.Model(inputs=input_image, outputs=outputs)
     model.summary()
 
     return model
 
 
 def ResNet18(height, width, num_class):
-    return ResNet(BasicBlock, [2, 2, 2, 2], height, width, num_class, include_top=True)
+    return ResNet(height, width, num_class, BasicBlock, [2, 2, 2, 2])
 
 
 def ResNet34(height, width, num_class):
-    return ResNet(BasicBlock, [3, 4, 6, 4], height, width, num_class, include_top=True)
+    return ResNet(height, width, num_class, BasicBlock, [3, 4, 6, 3])
 
 
 def ResNet50(height, width, num_class):
-    return ResNet(Bottleneck, [3, 4, 6, 3], height, width, num_class, include_top=True)
+    return ResNet(height, width, num_class, BottleneckBlock, [3, 4, 6, 3])
 
 
 def ResNet101(height, width, num_class):
-    return ResNet(Bottleneck, [3, 4, 23, 3], height, width, num_class, include_top=True)
+    return ResNet(height, width, num_class, BottleneckBlock, [3, 4, 23, 3])
 
 
 def model_train(model, x_train, x_val, epochs, train_step, val_step, weights_path):
@@ -301,7 +274,7 @@ def model_train(model, x_train, x_val, epochs, train_step, val_step, weights_pat
                                      save_best_only=True,
                                      save_weights_only=True,
                                      monitor='val_loss'),
-           callbacks.EarlyStopping(patience=5, min_delta=1e-3)]
+           callbacks.EarlyStopping(patience=10, min_delta=1e-3)]
 
     # 重点：fit 和 fit_generator的区别
     # 之前fit方法是使用整个训练集可以放入内存当中
@@ -351,14 +324,14 @@ def main():
     dataset_path = './dataset/'
     train_dir = os.path.join(dataset_path, 'train')
     val_dir = os.path.join(dataset_path, 'validation')
-    weights_path = "./logs/weights/ResNet.h5"
+    weights_path = "./model_weights/ResNet.h5"
 
     width = height = 224
     batch_size = 32
     num_classes = 5
     epochs = 30
     lr = 0.0003
-    is_train = False
+    is_train = True
 
     # 选择编号为0的GPU
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -381,7 +354,6 @@ def main():
 
     # 定义模型
     model = ResNet18(width, height, num_classes)
-    model.load_weights("./weights/pretrain.h5", skip_mismatch=True, by_name=True)
 
     # 输出层如果已经经过softmax激活就用from_logits置为False，如果没有处理 就置为True
     # 如果没有处理，模型会更加稳定

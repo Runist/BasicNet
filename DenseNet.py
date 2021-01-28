@@ -219,7 +219,7 @@ def model_train(model, x_train, x_val, epochs, train_step, val_step, weights_pat
                                      save_best_only=True,
                                      save_weights_only=True,
                                      monitor='val_loss'),
-           callbacks.EarlyStopping(patience=5, min_delta=1e-3)]
+           callbacks.EarlyStopping(patience=10, min_delta=1e-3)]
 
     history = model.fit(x_train,
                         steps_per_epoch=train_step,
@@ -266,7 +266,7 @@ def main():
     dataset_path = './dataset/'
     train_dir = os.path.join(dataset_path, 'train')
     val_dir = os.path.join(dataset_path, 'validation')
-    weights_path = "./logs/weights/DenseNet.h5"
+    weights_path = "./model_weights/DenseNet.h5"
     width = height = 224
     channel = 3
 

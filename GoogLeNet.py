@@ -328,7 +328,7 @@ def model_predict(model, weights_path, height, width):
     :return: None
     """
     class_indict = ['daisy', 'dandelion', 'rose', 'sunflower', 'tulips']
-    img_path = './dataset/daisy.jpg'
+    img_path = './dataset/tulips.jpg'
 
     # 值得一提的是，这里开启图片如果用其他方式，需要考虑读入图片的通道数，在制作训练集时采用的是RGB，而opencv采用的则是BGR
     image = tf.io.read_file(img_path)
@@ -365,15 +365,6 @@ def main():
     lr = 0.0003
     is_train = False
 
-    # 选择编号为0的GPU
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
-    # 这里的操作是让GPU动态分配内存不要将GPU的所有内存占满
-    gpus = tf.config.experimental.list_physical_devices("GPU")
-    if gpus:
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-
     # 数据读取
     train_image, train_label = read_data(train_dir)
     val_image, val_label = read_data(val_dir)
@@ -399,6 +390,12 @@ def main():
 
 
 if __name__ == "__main__":
+    # 这里的操作是让GPU动态分配内存不要将GPU的所有内存占满
+    gpus = tf.config.experimental.list_physical_devices("GPU")
+    if gpus:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+
     # 自定义损失、优化器、准确率
     loss_object = losses.CategoricalCrossentropy(from_logits=False)
 
